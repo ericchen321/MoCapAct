@@ -13,6 +13,8 @@ from dm_control.locomotion.walkers import cmu_humanoid
 
 from mocapact.envs import dm_control_wrapper
 
+import mujoco
+
 class MocapTrackingGymEnv(dm_control_wrapper.DmControlWrapper):
     """
     Wraps the MultiClipMocapTracking into a Gym env.
@@ -103,6 +105,31 @@ class MocapTrackingGymEnv(dm_control_wrapper.DmControlWrapper):
         info['time_in_clip'] = obs['walker/time_in_clip'].item()
         info['start_time_in_clip'] = self._start_time_in_clip
         info['last_time_in_clip'] = self._last_time_in_clip
+
+        # print(self._env.physics)
+        # print(self._env.physics.data.qpos.shape)
+        # print(self._env.physics.data.qvel.shape)
+        # print(self._env.physics.data.qfrc_constraint.shape)
+        # print(self._env.physics.data.qM.shape)
+        # dense_M = np.zeros((62, 62), dtype=np.float64)
+        # mujoco.mj_fullM(self._env.physics.model.ptr, dense_M, self._env.physics.data.qM)
+        # while True:
+        #     pass
+        # sample sim data
+        dof = 62
+        info["qpos"] = self._env.physics.data.qpos.copy()
+        info["qvel"] = self._env.physics.data.qvel.copy()
+        info["qacc"] = self._env.physics.data.qacc.copy()
+        info["qfrc_applied"] = self._env.physics.data.qfrc_applied.copy()
+        info["qfrc_actuator"] = self._env.physics.data.qfrc_actuator.copy()
+        info["qfrc_bias"] = self._env.physics.data.qfrc_bias.copy()
+        info["qfrc_constraint"] = self._env.physics.data.qfrc_constraint.copy()
+        info["qfrc_passive"] = self._env.physics.data.qfrc_passive.copy()
+        dense_M = np.zeros((dof, dof), dtype=np.float64)
+        mujoco.mj_fullM(self._env.physics.model.ptr, dense_M, self._env.physics.data.qM)
+        info["dense_M"] = dense_M
+        info["timestep"] = self._env.physics.model.opt.timestep
+        
         return obs, reward, done, info
 
     def reset(self):

@@ -26,7 +26,8 @@ def make_env_kwargs(
     task_kwargs = dict(
         reward_type='comic',
         min_steps=min_steps-1,
-        ghost_offset=np.array([ghost_offset, 0., 0.]),
+        # ghost_offset=np.array([ghost_offset, 0., 0.]),
+        ghost_offset=None,
         always_init_at_clip_start=always_init_at_clip_start,
         termination_error_threshold=termination_error_threshold
     )

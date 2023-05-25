@@ -22,6 +22,7 @@ from mocapact.sb3 import utils
 from mocapact.sb3 import wrappers
 from mocapact.envs import tracking
 from mocapact.clip_expert import utils as clip_expert_utils
+import h5py
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("policy_root", None, "Path to the policy")
@@ -41,6 +42,7 @@ flags.DEFINE_float("termination_error_threshold", 0.3, "Error for cutting off ex
 flags.DEFINE_integer("seed", 0, "RNG seed")
 flags.DEFINE_string("eval_save_path", None, "If desired, the path to save the evaluation results")
 flags.DEFINE_string("video_save_path", None, "If desired, path to save videos of rollouts")
+flags.DEFINE_string("sim_data_save_path", None, "If desired, path to save simulation data of rollouts")
 flags.DEFINE_string("device", "auto", "Device to run evaluation on")
 
 flags.mark_flag_as_required("policy_root")
@@ -79,7 +81,7 @@ def main(_):
             vec_monitor_cls=wrappers.MocapTrackingVecMonitor
         )
         record_video = FLAGS.video_save_path is not None
-        ep_rews, ep_lens, ep_norm_rews, ep_norm_lens, frames = evaluation.evaluate_locomotion_policy(
+        ep_rews, ep_lens, ep_norm_rews, ep_norm_lens, frames, sim_data = evaluation.evaluate_locomotion_policy(
             model,
             vec_env,
             n_eval_episodes=FLAGS.n_eval_episodes,
@@ -107,6 +109,44 @@ def main(_):
         if record_video:
             Path(osp.dirname(FLAGS.video_save_path)).mkdir(parents=True, exist_ok=True)
             imageio.mimwrite(FLAGS.video_save_path, frames, fps=1/0.03)
+
+        # save sim data
+        if FLAGS.sim_data_save_path is not None:
+            Path(osp.dirname(FLAGS.sim_data_save_path)).mkdir(parents=True, exist_ok=True)
+            # figure out how many steps is simulated
+            num_steps = len(sim_data)
+            print(f"Number of simulated steps: {num_steps}")
+            # assemble vectors that contain data from all steps
+            dof = 62
+            sim_data_vectorized = dict(
+                qpos = np.zeros((num_steps, dof+1)),
+                qvel = np.zeros((num_steps, dof)),
+                qacc = np.zeros((num_steps, dof)),
+                qfrc_applied = np.zeros((num_steps, dof)),
+                qfrc_actuator = np.zeros((num_steps, dof)),
+                qfrc_bias = np.zeros((num_steps, dof)),
+                qfrc_constraint = np.zeros((num_steps, dof)),
+                qfrc_passive = np.zeros((num_steps, dof)),
+                dense_Ms = np.zeros((num_steps, dof, dof)),
+                timestep = np.zeros((1,)))
+            for step_idx, data in enumerate(sim_data):
+                sim_data_vectorized["qpos"][step_idx] = data["qpos"]
+                sim_data_vectorized["qvel"][step_idx] = data["qvel"]
+                sim_data_vectorized["qacc"][step_idx] = data["qacc"]
+                sim_data_vectorized["qfrc_applied"][step_idx] = data["qfrc_applied"]
+                sim_data_vectorized["qfrc_actuator"][step_idx] = data["qfrc_actuator"]
+                sim_data_vectorized["qfrc_bias"][step_idx] = data["qfrc_bias"]
+                sim_data_vectorized["qfrc_constraint"][step_idx] = data["qfrc_constraint"]
+                sim_data_vectorized["qfrc_passive"][step_idx] = data["qfrc_passive"]
+                sim_data_vectorized["dense_Ms"][step_idx] = data["dense_M"]
+                if step_idx == 0:
+                    sim_data_vectorized["timestep"] = data["timestep"]
+
+            with h5py.File(FLAGS.sim_data_save_path, "w") as h5file:
+                for data_name, data in sim_data_vectorized.items():
+                    h5file.create_dataset(
+                        data_name, data = data)
+            print(f"Data saved to {FLAGS.sim_data_save_path}")
 
     if FLAGS.visualize:
         # env for visualization

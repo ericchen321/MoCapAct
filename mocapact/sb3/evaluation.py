@@ -23,7 +23,7 @@ def evaluate_locomotion_policy(
     reward_threshold: Optional[float] = None,
     return_episode_rewards: bool = False,
     warn: bool = True,
-) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:
+) -> Union[Tuple[float, float, List[Dict]], Tuple[List[float], List[int], List[Dict]]]:
     """
     Runs policy for ``n_eval_episodes`` episodes and returns average reward.
     If a vector env is passed in, this divides the episodes to evaluate onto the
@@ -55,10 +55,12 @@ def evaluate_locomotion_policy(
         per episode will be returned instead of the mean.
     :param warn: If True (default), warns user about lack of a Monitor wrapper in the
         evaluation environment.
-    :return: Mean reward per episode, std of reward per episode.
+    :return: Mean reward per episode, std of reward per episode, sim data.
         Returns ([float], [int]) when ``return_episode_rewards`` is True, first
         list containing per-episode rewards and second containing per-episode lengths
         (in number of steps).
+        sim_data is a list of dictionaries; each dictionary contains sim data sampled
+        at one time step.
     """
     is_monitor_wrapped = False
     # Avoid circular import
@@ -93,11 +95,24 @@ def evaluate_locomotion_policy(
     states = None
     frames = []
     episode_starts = np.ones((env.num_envs,), dtype=bool)
+    sim_data = []
     while (episode_counts < episode_count_targets).any():
         actions, states = model.predict(observations, state=states,
                                         episode_start=episode_starts,
                                         deterministic=deterministic)
         observations, rewards, dones, infos = env.step(actions)
+        sim_data_per_step = {
+            "qpos": infos[0]["qpos"],
+            "qvel": infos[0]["qvel"],
+            "qacc": infos[0]["qacc"],
+            "qfrc_applied": infos[0]["qfrc_applied"],
+            "qfrc_actuator": infos[0]["qfrc_actuator"],
+            "qfrc_bias": infos[0]["qfrc_bias"],
+            "qfrc_constraint": infos[0]["qfrc_constraint"],
+            "qfrc_passive": infos[0]["qfrc_passive"],
+            "dense_M": infos[0]["dense_M"],
+            "timestep": infos[0]["timestep"]}
+        sim_data.append(sim_data_per_step)
         current_rewards += rewards
         current_lengths += 1
         for i in range(n_envs):
@@ -149,5 +164,5 @@ def evaluate_locomotion_policy(
     if reward_threshold is not None:
         assert mean_reward > reward_threshold, "Mean reward below threshold: " f"{mean_reward:.2f} < {reward_threshold:.2f}"
     if return_episode_rewards:
-        return episode_rewards, episode_lengths, episode_norm_rewards, episode_norm_lengths, frames
-    return mean_reward, std_reward
+        return episode_rewards, episode_lengths, episode_norm_rewards, episode_norm_lengths, frames, sim_data
+    return mean_reward, std_reward, sim_data
